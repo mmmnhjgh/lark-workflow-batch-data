@@ -61,11 +61,9 @@ npx skills add larksuite/cli -y -g
 
 ### 安装本 Skill
 
-将本仓库的 `lark-workflow-batch-data/` 目录复制到你的 skills 目录：
-
 ```bash
-# 复制到 skills 目录
-cp -r lark-workflow-batch-data/ ~/.agents/skills/lark-workflow-batch-data/
+# 直接使用 GitHub 仓库链接安装
+npx skills add https://github.com/mmmnhjgh/lark-workflow-batch-data -y -g
 ```
 
 ### 配置认证
