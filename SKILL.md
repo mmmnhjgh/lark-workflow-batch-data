@@ -1,11 +1,84 @@
 ---
 name: lark-workflow-batch-data
-version: 1.0.0
-description: "批量数据操作工作流：编排飞书多维表格和电子表格的大批量读取、写入、更新、导入导出操作，内置断点续传和错误恢复机制。当用户需要处理上百或上千条数据、批量导入导出、跨表数据迁移、大数据量分析，或 Agent 操作飞书文档因数据量大而提前截断时使用。"
+version: 2.0.0
+description: "飞书批量数据操作（高优先级）：处理所有飞书多维表格和电子表格的大批量数据操作。当涉及超过20条读取、超过10条写入、任何数据分析、文件导入导出、跨表迁移，或提到'批量''全部''上千条''所有数据''统计''汇总''导入''导出''迁移''Excel'等关键词时，必须使用此 Skill！"
 metadata:
+  priority: 100
   requires:
     bins: ["lark-cli"]
   cliHelp: "lark-cli base --help; lark-cli sheets --help; lark-cli drive --help"
+  triggers:
+    - "批量"
+    - "全部"
+    - "所有数据"
+    - "上千条"
+    - "几百条"
+    - "读取所有"
+    - "导出"
+    - "导入"
+    - "Excel"
+    - "CSV"
+    - "统计"
+    - "分析"
+    - "汇总"
+    - "迁移"
+    - "同步"
+    - "只处理了十几条"
+    - "数据量大"
+    - "翻页"
+    - "分页"
+    - "断点续传"
+  examples:
+    - input: "帮我读取这个多维表格的所有数据"
+      output: "使用 base_read_batch 模板"
+    - input: "把这 2000 条数据写入多维表格"
+      output: "使用 base_write_batch 模板"
+    - input: "统计各部门的人数"
+      output: "使用 base_analysis 模板"
+    - input: "把这个 Excel 导入到飞书"
+      output: "使用 excel_import 模板"
+    - input: "把 A 表的数据迁移到 B 表"
+      output: "使用 data_migration 模板"
+  templates:
+    - name: base_read_batch
+      description: "批量读取多维表格数据，自动分页续读、断点续传、进度显示"
+      params:
+        base_token: "多维表格的 token（必需）"
+        table_id: "表 ID 或表名（必需）"
+        limit: "每页条数，默认 200"
+        offset: "起始偏移量，默认 0（用于断点续传）"
+      example: "帮我读取这个多维表格的所有数据，有 3000 条"
+    - name: base_write_batch
+      description: "批量写入数据到多维表格，自动分批处理、写前校验、失败记录收集"
+      params:
+        base_token: "多维表格的 token（必需）"
+        table_id: "表 ID 或表名（必需）"
+        data: "要写入的数据列表（必需）"
+        batch_size: "每批条数，默认 500"
+      example: "帮我把这 2000 条数据写入多维表格"
+    - name: base_analysis
+      description: "使用服务端聚合分析数据，避免上下文溢出"
+      params:
+        base_token: "多维表格的 token（必需）"
+        table_id: "表 ID 或表名（必需）"
+        dimensions: "维度字段列表，例如：['部门']"
+        measures: "度量字段列表，例如：[{field_name: '姓名', aggregation: 'count'}]"
+      example: "帮我统计各部门的人数和平均薪资"
+    - name: data_migration
+      description: "跨表数据迁移，自动处理字段映射和进度追踪"
+      params:
+        source_base_token: "源多维表格的 token（必需）"
+        source_table_id: "源表 ID 或表名（必需）"
+        target_base_token: "目标多维表格的 token（必需）"
+        target_table_id: "目标表 ID 或表名（必需）"
+        field_mapping: "字段映射，例如：{'源字段': '目标字段'}"
+      example: "帮我把 A 表的数据迁移到 B 表"
+    - name: excel_import
+      description: "导入 Excel/CSV 到多维表格，处理超时、状态轮询和断点续传"
+      params:
+        file_path: "Excel/CSV 文件路径（必需）"
+        base_name: "目标多维表格名称"
+      example: "帮我把这个 data.xlsx 导入到飞书多维表格"
 ---
 
 # 批量数据操作工作流
@@ -139,6 +212,113 @@ lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
 | 电子表格写入 | `sheets:spreadsheet:write` |
 | 文件导入 | `drive:drive:write` |
 | 文件导出 | `drive:drive:read` |
+
+## OpenClaw 集成与 API 融合
+
+### 问题分析
+
+当使用 OpenClaw 时，可能会出现以下问题：
+- OpenClaw 倾向于直接调用飞书 API，而不是使用本 Skill
+- 即使使用本 Skill，也可能出现上下文溢出或操作中断的情况
+- 缺乏标准化的模板，导致每次操作都需要重新构造命令
+
+### 融合方案
+
+#### 1. 智能路由机制
+
+当检测到以下场景时，自动使用本 Skill 而非直接 API 调用：
+
+| 场景 | 条件 | 处理方式 |
+|------|------|----------|
+| 大批量读取 | 数据量 > 200 条或用户明确要求全量数据 | 使用 `base_read_batch` 模板，自动分页续读 |
+| 大批量写入 | 数据量 > 50 条或用户明确要求批量写入 | 使用 `base_write_batch` 模板，自动分批处理 |
+| 数据分析 | 用户要求统计、汇总等分析操作 | 使用 `base_analysis` 模板，服务端聚合 |
+| 跨表迁移 | 用户要求在不同表格间迁移数据 | 使用 `data_migration` 模板，自动字段映射 |
+| 文件导入 | 用户要求导入 Excel/CSV 文件 | 使用 `excel_import` 模板，处理超时和断点 |
+
+#### 2. 自动降级策略
+
+当遇到以下情况时，自动从 API 调用降级到本 Skill：
+
+1. **API 调用失败**：当直接 API 调用返回 429（速率限制）、1254291（并发冲突）等错误时
+2. **上下文溢出**：当 Agent 处理数据时出现上下文长度限制警告
+3. **操作中断**：当批量操作中途停止，需要断点续传时
+
+#### 3. 模板使用指南
+
+OpenClaw 可以通过以下方式使用模板：
+
+```python
+# 示例：使用 base_read_batch 模板读取大量数据
+from lark_workflow_batch_data import BaseReadBatch
+
+reader = BaseReadBatch(
+    base_token="app_xxx",
+    table_id="tbl_xxx",
+    limit=200
+)
+
+# 自动分页读取所有数据
+results = reader.read_all()
+
+# 处理结果
+for batch in results:
+    print(f"读取了 {len(batch)} 条记录")
+```
+
+#### 4. 环境变量配置
+
+为了让 OpenClaw 能够自动识别并使用本 Skill，建议设置以下环境变量：
+
+```bash
+# .env 文件
+LARK_WORKFLOW_BATCH_DATA_ENABLED=true
+LARK_WORKFLOW_BATCH_DATA_THRESHOLD=200  # 触发批量处理的阈值
+LARK_WORKFLOW_BATCH_DATA_RETRY_TIMES=3  # 重试次数
+```
+
+### 实现建议
+
+1. **创建 Python 包装器**：为 lark-cli 命令创建 Python 包装器，使 OpenClaw 能够更方便地调用
+
+2. **添加状态管理**：在 OpenClaw 中添加状态管理模块，记录批量操作的进度和断点
+
+3. **智能检测**：实现智能检测机制，自动判断何时使用本 Skill，何时使用直接 API 调用
+
+4. **错误处理统一**：统一处理 API 错误和 Skill 错误，提供一致的错误恢复机制
+
+5. **进度反馈**：在 OpenClaw 界面中显示批量操作的进度，让用户了解当前状态
+
+### 示例：OpenClaw 集成代码
+
+```python
+# openclaw_lark_integration.py
+
+def handle_lark_operation(user_input, context):
+    # 检测操作类型和数据量
+    operation_type = detect_operation_type(user_input)
+    data_size = estimate_data_size(user_input, context)
+    
+    # 智能路由
+    if operation_type == "read" and data_size > 200:
+        # 使用批量读取模板
+        return use_template("base_read_batch", user_input, context)
+    elif operation_type == "write" and data_size > 50:
+        # 使用批量写入模板
+        return use_template("base_write_batch", user_input, context)
+    elif operation_type == "analysis":
+        # 使用服务端分析模板
+        return use_template("base_analysis", user_input, context)
+    elif operation_type == "migration":
+        # 使用数据迁移模板
+        return use_template("data_migration", user_input, context)
+    elif operation_type == "import":
+        # 使用文件导入模板
+        return use_template("excel_import", user_input, context)
+    else:
+        # 使用直接 API 调用
+        return use_direct_api(operation_type, user_input, context)
+```
 
 ## 参考
 
